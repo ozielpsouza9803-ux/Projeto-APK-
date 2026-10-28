@@ -19,24 +19,22 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.AppointmentItem
-import com.example.model.ServiceItem
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.AppointmentEntity
+import com.example.data.ServiceEntity
+import com.example.viewmodel.SalonViewModel
 
 @Composable
-fun ClientScreen() {
+fun ClientScreen(viewModel: SalonViewModel) {
   var selectedTab by remember { mutableStateOf(0) }
   val tabs = listOf("Serviços & Agendamento", "Meus Agendamentos", "Favoritos")
 
-  // Mutable list for appointments
-  val myAppointments = remember {
-    mutableStateListOf(
-      AppointmentItem("1", "Ana Souza", "Corte & Styling Premium", "14:00", "Hoje", "Carlos Silva", "Confirmado"),
-      AppointmentItem("2", "Ana Souza", "Spa Capilar & Hidratação", "10:30", "Amanhã", "Mariana Lima", "Pendente")
-    )
-  }
+  val appointments by viewModel.appointments.collectAsStateWithLifecycle()
+  val services by viewModel.services.collectAsStateWithLifecycle()
+  val professionals by viewModel.professionals.collectAsStateWithLifecycle()
 
   // Booking dialog state
-  var selectedServiceForBooking by remember { mutableStateOf<ServiceItem?>(null) }
+  var selectedServiceForBooking by remember { mutableStateOf<ServiceEntity?>(null) }
   var selectedProfessional by remember { mutableStateOf("Carlos Silva") }
   var selectedDate by remember { mutableStateOf("Hoje") }
   var selectedTime by remember { mutableStateOf("15:00") }
@@ -44,17 +42,8 @@ fun ClientScreen() {
   var successMessage by remember { mutableStateOf<String?>(null) }
 
   // Details dialog state
-  var selectedAppointmentForDetails by remember { mutableStateOf<AppointmentItem?>(null) }
+  var selectedAppointmentForDetails by remember { mutableStateOf<AppointmentEntity?>(null) }
 
-  val allServices = listOf(
-    ServiceItem("1", "Corte & Styling Premium", "Cabelo", "R$ 120", "45 min", "Corte personalizado com lavagem e finalização exclusiva."),
-    ServiceItem("2", "Barba Terapia & Alinhamento", "Barba", "R$ 80", "30 min", "Tratamento completo para barba com toalha quente e óleos nobres."),
-    ServiceItem("3", "Coloração & Reflexos", "Química", "R$ 250", "120 min", "Técnicas modernas de coloração, mechas e tonalização."),
-    ServiceItem("4", "Manicure & Pedicure Spa", "Unhas", "R$ 90", "60 min", "Cuidados completos para mãos e pés com esmaltação premium."),
-    ServiceItem("5", "Spa Capilar & Hidratação", "Tratamento", "R$ 180", "60 min", "Recuperação profunda dos fios com produtos importados.")
-  )
-
-  val professionals = listOf("Carlos Silva", "Mariana Lima", "Beatriz Souza", "Rafael Santos")
   val dates = listOf("Hoje", "Amanhã", "Quarta-feira", "Quinta-feira")
   val times = listOf("09:00", "10:30", "13:00", "15:00", "17:30")
 
@@ -70,7 +59,7 @@ fun ClientScreen() {
       color = MaterialTheme.colorScheme.primary
     )
     Text(
-      text = "Catálogo e Agendamentos com Validação (Demonstração)",
+      text = "Catálogo e Agendamentos com Persistência Room (SQLite)",
       style = MaterialTheme.typography.bodyMedium,
       color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -123,7 +112,7 @@ fun ClientScreen() {
           verticalArrangement = Arrangement.spacedBy(12.dp),
           modifier = Modifier.fillMaxSize()
         ) {
-          items(allServices) { service ->
+          items(services) { service ->
             Card(
               modifier = Modifier.fillMaxWidth().testTag("service_card_${service.id}"),
               shape = RoundedCornerShape(12.dp),
@@ -172,7 +161,7 @@ fun ClientScreen() {
       }
       1 -> {
         // My Appointments
-        if (myAppointments.isEmpty()) {
+        if (appointments.isEmpty()) {
           Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Nenhum agendamento ativo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
@@ -181,7 +170,7 @@ fun ClientScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxSize()
           ) {
-            items(myAppointments) { apt ->
+            items(appointments) { apt ->
               Card(
                 modifier = Modifier
                   .fillMaxWidth()
@@ -260,9 +249,14 @@ fun ClientScreen() {
     }
   }
 
-  // Booking Dialog with Validation (Conflict & Past time check)
+  // Booking Dialog with Validation
   if (selectedServiceForBooking != null) {
     val service = selectedServiceForBooking!!
+    val profNames = professionals.map { it.name }.ifEmpty { listOf("Carlos Silva") }
+    if (!profNames.contains(selectedProfessional)) {
+      selectedProfessional = profNames.first()
+    }
+
     AlertDialog(
       onDismissRequest = { selectedServiceForBooking = null },
       title = {
@@ -292,13 +286,13 @@ fun ClientScreen() {
             }
           }
 
-          Text(text = "Selecional o profissional:", style = MaterialTheme.typography.bodyMedium)
+          Text(text = "Selecione o profissional:", style = MaterialTheme.typography.bodyMedium)
           ScrollableTabRow(
-            selectedTabIndex = professionals.indexOf(selectedProfessional),
+            selectedTabIndex = profNames.indexOf(selectedProfessional).coerceAtLeast(0),
             edgePadding = 0.dp,
             containerColor = MaterialTheme.colorScheme.surfaceVariant
           ) {
-            professionals.forEach { prof ->
+            profNames.forEach { prof ->
               Tab(
                 selected = selectedProfessional == prof,
                 onClick = { selectedProfessional = prof },
@@ -341,8 +335,7 @@ fun ClientScreen() {
       confirmButton = {
         Button(
           onClick = {
-            // Validation 1: Check conflict for the same professional on the same date and time
-            val hasConflict = myAppointments.any { apt ->
+            val hasConflict = appointments.any { apt ->
               apt.status != "Cancelado" &&
                 apt.professionalName == selectedProfessional &&
                 apt.date == selectedDate &&
@@ -352,7 +345,7 @@ fun ClientScreen() {
             if (hasConflict) {
               bookingErrorMessage = "Conflito: $selectedProfessional já possui agendamento em $selectedDate às $selectedTime."
             } else {
-              val newApt = AppointmentItem(
+              val newApt = AppointmentEntity(
                 id = System.currentTimeMillis().toString(),
                 clientName = "Ana Souza (Cliente)",
                 serviceName = service.name,
@@ -361,9 +354,9 @@ fun ClientScreen() {
                 professionalName = selectedProfessional,
                 status = "Confirmado"
               )
-              myAppointments.add(0, newApt)
+              viewModel.insertAppointment(newApt)
               selectedServiceForBooking = null
-              successMessage = "Agendamento confirmado com validação (Demonstração)!"
+              successMessage = "Agendamento persistido via Room (SQLite) com sucesso!"
               selectedTab = 1
             }
           },
@@ -398,18 +391,14 @@ fun ClientScreen() {
           Text(text = "Cliente: ${apt.clientName}")
           Text(text = "Status: ${apt.status}", color = if (apt.status == "Cancelado") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary)
           Spacer(modifier = Modifier.height(4.dp))
-          Text(text = "*(Dados de demonstração validados)*", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          Text(text = "*(Persistido localmente via Room)*", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       },
       confirmButton = {
         if (apt.status != "Cancelado") {
           Button(
             onClick = {
-              // Cancel appointment
-              val index = myAppointments.indexOfFirst { it.id == apt.id }
-              if (index != -1) {
-                myAppointments[index] = apt.copy(status = "Cancelado")
-              }
+              viewModel.updateAppointmentStatus(apt.id, "Cancelado")
               selectedAppointmentForDetails = null
               successMessage = "Agendamento cancelado com sucesso."
             },

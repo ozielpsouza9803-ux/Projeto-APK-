@@ -16,6 +16,14 @@ data class ServiceItem(
   val description: String
 )
 
+data class ProfessionalItem(
+  val id: String,
+  val name: String,
+  val specialty: String,
+  val availability: String,
+  val rating: String
+)
+
 data class AppointmentItem(
   val id: String,
   val clientName: String,
@@ -23,5 +31,5 @@ data class AppointmentItem(
   val time: String,
   val date: String,
   val professionalName: String,
-  val status: String // "Confirmado", "Pendente", "Concluído"
+  val status: String // "Confirmado", "Pendente", "Concluído", "Cancelado"
 )
